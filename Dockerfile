@@ -30,6 +30,10 @@ LABEL \
     org.label-schema.vcs-ref="${ARG_VCS_REF}" \
     org.label-schema.vcs-url="https://github.com/TradingIndian/docker-vnc-wine-mt4"
 
+ENV \
+    DEBIAN_FRONTEND=noninteractive 
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install --no-install-recommends -yq apt-utils
+
 ### 'apt-get clean' runs automatically
 RUN apt-get update && apt-get install -y \
         inetutils-ping \
@@ -46,6 +50,8 @@ RUN apt-get update && apt-get install -y \
         nano \
     && apt-get -y autoremove \
     && rm -rf /var/lib/apt/lists/*
+
+RUN ln -snf /usr/share/zoneinfo/$(curl https://ipapi.co/timezone) /etc/localtime
 
 ### install current 'jq' explicitly
 RUN \
@@ -78,15 +84,15 @@ RUN \
 
 FROM stage-ubuntu as stage-xfce
 
-ENV \
-    DEBIAN_FRONTEND=noninteractive \
-    LANG='en_US.UTF-8' \
-    LANGUAGE='en_US:en' \
-    LC_ALL='en_US.UTF-8'
-
 ### 'apt-get clean' runs automatically
+RUN apt-get update && \
+	apt-get --no-install-recommends install -y \
+		locales autoconf libtool pkg-config make automake \
+        nuget mono-devel ca-certificates-mono && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen && /usr/sbin/locale-gen
+
 RUN apt-get update && apt-get install -y \
-        locales \
         supervisor \
         xfce4 \
         xfce4-terminal \
@@ -100,13 +106,22 @@ RUN apt-get update && apt-get install -y \
     && apt-get -y autoremove \
     && rm -rf /var/lib/apt/lists/*
 
+ENV \
+    DEBIAN_FRONTEND=noninteractive \
+    LANG='en_US.UTF-8' \
+    LANGUAGE='en_US:en' \
+    LC_ALL='en_US.UTF-8'
+
 FROM stage-xfce as stage-wine
+
+RUN dpkg --add-architecture i386
+ENV APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1
 
 RUN wget -O - https://dl.winehq.org/wine-builds/winehq.key | apt-key add -
 RUN echo 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main' |tee /etc/apt/sources.list.d/winehq.list
-RUN apt-get update && apt-get -y install winehq-stable
+RUN apt-get update && apt-get -y install winehq-stable xz-utils
 #RUN mkdir /opt/wine-stable/share/wine/mono && wget -O - https://dl.winehq.org/wine/wine-mono/4.9.4/wine-mono-bin-4.9.4.tar.gz |tar -xzv -C /opt/wine-stable/share/wine/mono 
-RUN mkdir /opt/wine-stable/share/wine/mono && wget -O - https://dl.winehq.org/wine/wine-mono/5.1.1/wine-mono-5.1.1-x86.tar.gz |tar -xzv -C /opt/wine-stable/share/wine/mono
+RUN mkdir /opt/wine-stable/share/wine/mono && wget -O - https://dl.winehq.org/wine/wine-mono/5.1.1/wine-mono-5.1.1-x86.tar.gz |tar -xJv -C /opt/wine-stable/share/wine/mono
 RUN mkdir /opt/wine-stable/share/wine/gecko && \
 		wget -O /opt/wine-stable/share/wine/gecko/wine-gecko-2.47.1-x86.msi https://dl.winehq.org/wine/wine-gecko/2.47.1/wine-gecko-2.47.1-x86.msi && \
         wget -O /opt/wine-stable/share/wine/gecko/wine-gecko-2.47.1-x86_64.msi https://dl.winehq.org/wine/wine-gecko/2.47.1/wine-gecko-2.47.1-x86_64.msi 
@@ -115,6 +130,8 @@ RUN apt-get -y full-upgrade && apt-get clean
 ENV WINEPREFIX /root/prefix32
 ENV WINEARCH win32
 ENV DISPLAY :0
+
+ENV APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=0
 
 FROM stage-wine as stage-vnc
 
